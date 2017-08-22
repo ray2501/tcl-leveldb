@@ -1,0 +1,182 @@
+# tcl-leveldb.test --
+#
+#	Tests for tcl-leveldb
+#------------------------------------------------------------------------------
+
+lappend auto_path .
+if {[lsearch [namespace children] ::tcltest] == -1} {
+    package require tcltest 2
+    namespace import -force ::tcltest::*
+}
+loadTestedCommands
+package require leveldb
+
+#-------------------------------------------------------------------------------
+
+test leveldb-1.1 {Test leveldb command, wrong # args} {*}{
+    -body {
+    leveldb
+    }
+    -returnCodes error
+    -match glob
+    -result {wrong # args*}
+}
+
+
+#-------------------------------------------------------------------------------
+
+
+test leveldb-2.1 {Open a database, wrong # args} {*}{
+    -body {
+    leveldb open -path
+    }
+    -returnCodes error
+    -match glob
+    -result {wrong # args*}
+}
+
+test leveldb-2.2 {Open a database} {*}{
+    -body {
+    leveldb open -path "./leveldbtest" -create_if_missing 1
+    }
+    -result {leveldbi0}
+}
+
+test leveldb-2.3 {Put, wrong # args} {*}{
+    -body {
+    leveldbi0 put "1234" "567890" -sync
+    }
+    -returnCodes error
+    -match glob
+    -result {wrong # args*}
+}
+
+test leveldb-2.4 {Put} {*}{
+    -body {
+    leveldbi0 put "1234" "567890"
+    }
+    -result {0}
+}
+
+test leveldb-2.5 {Get} {*}{
+    -body {
+    leveldbi0 get "1234"
+    }
+    -result {567890}
+}
+
+test leveldb-2.6 {Put Sync} {*}{
+    -body {
+    leveldbi0 put "5678" "LevelDB and Tcl" -sync 1
+    }
+    -result {0}
+}
+
+test leveldb-2.7 {Delete} {*}{
+    -body {
+    leveldbi0 delete "1234" 
+    }
+    -result {0}
+}
+
+test leveldb-2.8 {Iteration create} {*}{
+    -body {
+    leveldbi0 iterator
+    }
+    -result {levelitr0}
+}
+
+test leveldb-2.9 {Iteration seektofirst} {*}{
+    -body {
+    levelitr0 seektofirst
+    }
+    -result {0}
+}
+
+test leveldb-2.10 {Iteration valid} {*}{
+    -body {
+    levelitr0 valid
+    }
+    -result {1}
+}
+
+test leveldb-2.11 {Iteration seek} {*}{
+    -body {
+    levelitr0 seek "5678"
+    }
+    -result {0}
+}
+
+test leveldb-2.12 {Iteration key} {*}{
+    -body {
+    levelitr0 key
+    }
+    -result {5678}
+}
+
+test leveldb-2.13 {Iteration value} {*}{
+    -body {
+    levelitr0 value
+    }
+    -result {LevelDB and Tcl}
+}
+
+test leveldb-2.14 {Iteration next} {*}{
+    -body {
+    levelitr0 next
+    }
+    -result {0}
+}
+
+test leveldb-2.15 {Iteration valid} {*}{
+    -body {
+    levelitr0 valid
+    }
+    -result {0}
+}
+
+test leveldb-2.16 {Iteration close} {*}{
+    -body {
+    levelitr0 close
+    }
+    -result {0}
+}
+
+test leveldb-2.17 {Create a WrireBatch} {*}{
+    -body {
+    leveldbi0 batch
+    }
+    -result {levelbat0}
+}
+
+test leveldb-2.18 {Write a WrireBatch} {*}{
+    -body {
+    levelbat0 put "test1" "1234567890"
+    levelbat0 put "test2" "2345678901"
+    levelbat0 put "test3" "3456789012"
+    levelbat0 put "test4" "4567890123"
+    levelbat0 put "test5" "5678901234"
+    leveldbi0 write levelbat0
+    }
+    -result {0}
+}
+
+test leveldb-2.19 {Close a WrireBatch} {*}{
+    -body {
+    levelbat0 close
+    }
+    -result {0}
+}
+
+test leveldb-2.20 {Close and Destroy} {*}{
+    -body {
+    leveldbi0 close
+    leveldb destroy "./leveldbtest"
+    }
+    -result {0}
+}
+
+#-------------------------------------------------------------------------------
+
+cleanupTests
+return
