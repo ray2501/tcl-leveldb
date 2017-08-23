@@ -658,7 +658,7 @@ static int LEVELDB_DBI(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*obj
 
       key2 = leveldb::Slice(key, key_len);
 
-      status = db->Delete(leveldb::WriteOptions(), key2);
+      status = db->Delete(write_options, key2);
       if(!status.ok()) {
         Tcl_AppendResult(interp, "Error: delete failed", (char*)0);
         return TCL_ERROR;

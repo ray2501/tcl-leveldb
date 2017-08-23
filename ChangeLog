@@ -1,5 +1,6 @@
 2017-08-23  Danilo Chang
 
+     * Fix delete command: use write_options
      * Bump version to v0.1.1
      * Update DB_HANDLE get/delete command
 
