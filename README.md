@@ -71,9 +71,9 @@ leveldb open -path path ?-create_if_missing BOOLEAN? ?-error_if_exists BOOLEAN?
  ?-compression type?   
 leveldb repair name  
 leveldb destroy name  
-DB_HANDLE get key  
+DB_HANDLE get key ?-fillCache BOOLEAN?  
 DB_HANDLE put key value ?-sync BOOLEAN?  
-DB_HANDLE delete key  
+DB_HANDLE delete key ?-sync BOOLEAN?  
 DB_HANDLE write BAT_HANDLE  
 DB_HANDLE batch  
 DB_HANDLE iterator  

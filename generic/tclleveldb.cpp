@@ -110,12 +110,12 @@ static int LEVELDB_BAT(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*obj
   switch( (enum BAT_enum)choice ){
 
     case BAT_PUT: {
-      char *key;
-      char *data;
-      int key_len;
-      int data_len;
-      std::string key2;
-      std::string value2;
+      const char *key = NULL;
+      const char *data = NULL;
+      int key_len = 0;
+      int data_len = 0;
+      leveldb::Slice key2;
+      leveldb::Slice value2;
 
       if( objc < 4 || (objc&1)!=0) {
         Tcl_WrongNumArgs(interp, 2, objv, "key data ");
@@ -134,8 +134,8 @@ static int LEVELDB_BAT(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*obj
          return TCL_ERROR;
       }
 
-      key2 = key;
-      value2 = data;
+      key2 = leveldb::Slice(key, key_len);
+      value2 = leveldb::Slice(data, data_len);
       batch->Put(key2, value2);
       Tcl_SetObjResult(interp, Tcl_NewIntObj( 0 ));
 
@@ -143,9 +143,9 @@ static int LEVELDB_BAT(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*obj
     }
 
     case BAT_DELETE: {
-      char *key;
-      int key_len;
-      std::string key2;
+      const char *key = NULL;
+      int key_len = 0;
+      leveldb::Slice key2;
 
       if( objc < 3 || (objc&1)!=1) {
         Tcl_WrongNumArgs(interp, 2, objv, "key ");
@@ -158,7 +158,7 @@ static int LEVELDB_BAT(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*obj
          return TCL_ERROR;
       }
 
-      key2 = key;
+      key2 = leveldb::Slice(key, key_len);
       batch->Delete(key2);
       Tcl_SetObjResult(interp, Tcl_NewIntObj( 0 ));
 
@@ -508,15 +508,18 @@ static int LEVELDB_DBI(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*obj
   switch( (enum DBI_enum)choice ){
 
     case DBI_GET: {
+      leveldb::ReadOptions read_options;
       leveldb::Status status;
-      char *key;
-      int key_len;
-      std::string key2;
+      const char *key = NULL;
+      int key_len = 0;
+      leveldb::Slice key2;
       std::string value2;
+      char *zArg;
+      int i = 0;
       Tcl_Obj *pResultStr = NULL;
 
       if( objc < 3 || (objc&1)!=1) {
-        Tcl_WrongNumArgs(interp, 2, objv, "key ");
+        Tcl_WrongNumArgs(interp, 2, objv, "key ?-fillCache BOOLEAN? ");
         return TCL_ERROR;
       }
 
@@ -526,9 +529,26 @@ static int LEVELDB_DBI(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*obj
          return TCL_ERROR;
       }
 
-      key2 = key;
+      for(i=3; i+1<objc; i+=2){
+        zArg = Tcl_GetStringFromObj(objv[i], 0);
 
-      status = db->Get(leveldb::ReadOptions(), key2, &value2);
+        if( strcmp(zArg, "-fillCache")==0 ){
+            int b;
+            if( Tcl_GetBooleanFromObj(interp, objv[i+1], &b) ) return TCL_ERROR;
+            if( b ){
+              read_options.fill_cache = true;
+            }else{
+              read_options.fill_cache = false;
+            }
+        } else{
+           Tcl_AppendResult(interp, "unknown option: ", zArg, (char*)0);
+           return TCL_ERROR;
+        }
+      }
+
+      key2 = leveldb::Slice(key, key_len);
+
+      status = db->Get(read_options, key2, &value2);
       if(!status.ok()) {
         Tcl_AppendResult(interp, "Error: get failed", (char*)0);
         return TCL_ERROR;
@@ -543,12 +563,12 @@ static int LEVELDB_DBI(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*obj
     case DBI_PUT: {
       leveldb::Status status;
       leveldb::WriteOptions write_options;
-      char *key;
-      char *data;
-      int key_len;
-      int data_len;
-      std::string key2;
-      std::string value2;
+      const char *key = NULL;
+      const char *data = NULL;
+      int key_len = 0;
+      int data_len = 0;
+      leveldb::Slice key2;
+      leveldb::Slice value2;
       char *zArg;
       int i = 0;
 
@@ -586,8 +606,8 @@ static int LEVELDB_DBI(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*obj
         }
       }
 
-      key2 = key;
-      value2 = data;
+      key2 = leveldb::Slice(key, key_len);
+      value2 = leveldb::Slice(data, data_len);
       status = db->Put(write_options, key2, value2);
       if(!status.ok()) {
         Tcl_AppendResult(interp, "Error: put failed", (char*)0);
@@ -601,12 +621,15 @@ static int LEVELDB_DBI(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*obj
 
     case DBI_DELETE: {
       leveldb::Status status;
-      char *key;
-      int key_len;
-      std::string key2;
+      leveldb::WriteOptions write_options;
+      const char *key = NULL;
+      int key_len = 0;
+      leveldb::Slice key2;
+      char *zArg;
+      int i = 0;
 
       if( objc < 3 || (objc&1)!=1) {
-        Tcl_WrongNumArgs(interp, 2, objv, "key ");
+        Tcl_WrongNumArgs(interp, 2, objv, "key ?-sync BOOLEAN? ");
         return TCL_ERROR;
       }
 
@@ -616,7 +639,24 @@ static int LEVELDB_DBI(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*obj
          return TCL_ERROR;
       }
 
-      key2 = key;
+      for(i=3; i+1<objc; i+=2){
+        zArg = Tcl_GetStringFromObj(objv[i], 0);
+
+        if( strcmp(zArg, "-sync")==0 ){
+            int b;
+            if( Tcl_GetBooleanFromObj(interp, objv[i+1], &b) ) return TCL_ERROR;
+            if( b ){
+              write_options.sync = true;
+            }else{
+              write_options.sync = false;
+            }
+        } else{
+           Tcl_AppendResult(interp, "unknown option: ", zArg, (char*)0);
+           return TCL_ERROR;
+        }
+      }
+
+      key2 = leveldb::Slice(key, key_len);
 
       status = db->Delete(leveldb::WriteOptions(), key2);
       if(!status.ok()) {
