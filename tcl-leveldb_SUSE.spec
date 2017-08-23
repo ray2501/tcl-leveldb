@@ -4,7 +4,7 @@
 
 Name:          tcl-leveldb
 Summary:       Tcl interface for LevelDB
-Version:       0.1
+Version:       0.1.1
 Release:       1
 License:       MIT
 Group:         Development/Libraries/Tcl

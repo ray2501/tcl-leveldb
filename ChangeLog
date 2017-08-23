@@ -1,5 +1,6 @@
 2017-08-23  Danilo Chang
 
+     * Bump version to v0.1.1
      * Update DB_HANDLE get/delete command
 
 2017-08-22  Danilo Chang
