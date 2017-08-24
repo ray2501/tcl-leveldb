@@ -168,7 +168,30 @@ test leveldb-2.19 {Close a WrireBatch} {*}{
     -result {0}
 }
 
-test leveldb-2.20 {Close and Destroy} {*}{
+test leveldb-2.20 {Create a Snapshot} {*}{
+    -body {
+    leveldbi0 snapshot
+    }
+    -result {levelsst0}
+}
+
+test leveldb-2.21 {Close a Snapshot, wrong parameter} {*}{
+    -body {
+    levelsst0 close -db
+    }
+    -returnCodes error
+    -match glob
+    -result {wrong # args*}
+}
+
+test leveldb-2.22 {Close a Snapshot} {*}{
+    -body {
+    levelsst0 close -db leveldbi0
+    }
+    -result {0}
+}
+
+test leveldb-2.23 {Close and Destroy} {*}{
     -body {
     leveldbi0 close
     leveldb destroy "./leveldbtest"

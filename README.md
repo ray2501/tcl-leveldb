@@ -6,7 +6,6 @@ library written at Google that provides an ordered mapping from string keys
 to string values.
 
 This extension is the Tcl interface to the LevelDB.
-Now tcl-leveldb at an early development stage (or a prototype).
 
 
 License
@@ -15,6 +14,13 @@ License
 LevelDB is Licensed under New BSD License.
 
 tcl-leveldb is Licensed under MIT License.
+
+
+Documentation
+=====
+
+ * [LevelDB source code](https://github.com/google/leveldb)
+ * [LevelDB library documentation](https://github.com/google/leveldb/blob/master/doc/index.md)
 
 
 UNIX BUILD
@@ -68,15 +74,16 @@ for the major and minor levels of the LevelDB release.
 ### Database
 leveldb open -path path ?-create_if_missing BOOLEAN? ?-error_if_exists BOOLEAN? 
  ?-paranoid_checks BOOLEAN? ?-write_buffer_size size? ?-max_open_files number? 
- ?-compression type?   
+ ?-block_size size? ?-compression type?   
 leveldb repair name  
 leveldb destroy name  
-DB_HANDLE get key ?-fillCache BOOLEAN?  
+DB_HANDLE get key ?-fillCache BOOLEAN? ?-snapshot HANDLE?  
 DB_HANDLE put key value ?-sync BOOLEAN?  
 DB_HANDLE delete key ?-sync BOOLEAN?  
 DB_HANDLE write BAT_HANDLE  
 DB_HANDLE batch  
-DB_HANDLE iterator  
+DB_HANDLE iterator ?-snapshot HANDLE?  
+DB_HANDLE snapshot  
 DB_HANDLE getApproximateSizes start limit  
 DB_HANDLE getProperty property  
 DB_HANDLE close  
@@ -92,6 +99,7 @@ IT_HANDLE close
 BAT_HANDLE put key value  
 BAT_HANDLE delete key  
 BAT_HANDLE close  
+SNAPSHOT_HANDLE close -db DB_HANDLE  
 
 The command `leveldb open` create a database handle. -path option is the path 
 of the database to open. -compression type supports "no" and "snappy".
@@ -105,10 +113,13 @@ contains important information.
 `leveldb destroy` destroy the contents of the specified database.
 Be very careful using this method.
 
-`DB_HANDLE iterator` create an Iterator handle.
-
 `DB_HANDLE batch` create a WriteBatch handle. Users can use `DB_HANDLE write`
 to apply a set of updates.
+
+`DB_HANDLE iterator` create an Iterator handle.
+
+`DB_HANDLE snapshot` created a Snapshot handle. Snapshots provide consistent
+read-only views over the entire state of the key-value store.
 
 `DB_HANDLE getApproximateSizes` can used to get the approximate number of
 bytes.
@@ -167,4 +178,47 @@ WriteBatch example:
     $it close
     $dbi close
 
+Snapshot example:
+
+    package require leveldb
+
+    set dbi [leveldb open -path "./testdb" -create_if_missing 1 \
+             -block_size 1024 -compression snappy]
+    $dbi put "test1" "1234567890"
+    $dbi put "test2" "2345678901"
+    $dbi put "test3" "3456789010"
+    $dbi put "test4" "4567890102"
+    $dbi put "test5" "5678901023"
+    set snapshot [$dbi snapshot]
+
+    $dbi put "test1" "It is the world after snapshot!!!"
+
+    # get
+    set value [$dbi get "test1" -snapshot $snapshot]
+    puts "Is is snapshot version: $value"
+
+    set value [$dbi get "test1"]
+    puts "Is is current version: $value"
+
+    # Iterator
+    puts "It is snapshot version:"
+    set it [$dbi iterator -snapshot $snapshot]
+    for {$it seektofirst} {[$it valid] == 1} {$it next} {
+        set key [$it key]
+        set value [$it value]
+        puts "Iterator --- I get $key: $value"
+    }
+    $it close
+
+    puts "It is current version:"
+    set it [$dbi iterator]
+    for {$it seektofirst} {[$it valid] == 1} {$it next} {
+        set key [$it key]
+        set value [$it value]
+        puts "Iterator --- I get $key: $value"
+    }
+    $it close
+
+    $snapshot close -db $dbi
+    $dbi close
 

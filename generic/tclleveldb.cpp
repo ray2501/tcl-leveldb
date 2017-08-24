@@ -35,6 +35,7 @@ typedef struct ThreadSpecificData {
   int dbi_count;
   int itr_count;
   int bat_count;
+  int sst_count;
 } ThreadSpecificData;
 
 static Tcl_ThreadDataKey dataKey;
@@ -51,6 +52,127 @@ void LEVELDB_Thread_Exit(ClientData clientdata)
     Tcl_DeleteHashTable(tsdPtr->leveldb_hashtblPtr);
     ckfree(tsdPtr->leveldb_hashtblPtr);
   }
+}
+
+
+static int LEVELDB_SST(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*objv){
+  int choice;
+  const leveldb::Snapshot* shot;
+  Tcl_HashEntry *hashEntryPtr;
+  char *sstHandle;
+
+  ThreadSpecificData *tsdPtr = (ThreadSpecificData *)
+      Tcl_GetThreadData(&dataKey, sizeof(ThreadSpecificData));
+
+  if (tsdPtr->initialized == 0) {
+    tsdPtr->initialized = 1;
+    tsdPtr->leveldb_hashtblPtr = (Tcl_HashTable *) ckalloc(sizeof(Tcl_HashTable));
+    Tcl_InitHashTable(tsdPtr->leveldb_hashtblPtr, TCL_STRING_KEYS);
+  }
+  static const char *SST_strs[] = {
+    "close",
+    0
+  };
+
+  enum SST_enum {
+    SST_CLOSE,
+  };
+
+  if( objc < 2 ){
+    Tcl_WrongNumArgs(interp, 1, objv, "SUBCOMMAND ...");
+    return TCL_ERROR;
+  }
+
+  if( Tcl_GetIndexFromObj(interp, objv[1], SST_strs, "option", 0, &choice) ){
+    return TCL_ERROR;
+  }
+
+  /*
+   * Get the leveldb::Snapshot value
+   */
+  sstHandle = Tcl_GetStringFromObj(objv[0], 0);
+  hashEntryPtr = Tcl_FindHashEntry( tsdPtr->leveldb_hashtblPtr, sstHandle );
+  if( !hashEntryPtr ) {
+    if( interp ) {
+        Tcl_Obj *resultObj = Tcl_GetObjResult( interp );
+
+        Tcl_AppendStringsToObj( resultObj, "invalid snapshot handle ", sstHandle, (char *)NULL );
+    }
+
+    return TCL_ERROR;
+  }
+
+  shot = (leveldb::Snapshot *)(uintptr_t)Tcl_GetHashValue( hashEntryPtr );
+
+  switch( (enum SST_enum)choice ){
+
+    case SST_CLOSE: {
+      leveldb::DB* db;
+      const char *dbiHandle = NULL;
+      int len = 0;
+      char *zArg;
+      int i = 0;
+      Tcl_HashEntry *dbHashEntryPtr;
+
+      if( objc != 4 ){
+        Tcl_WrongNumArgs(interp, 2, objv, "-db DB_HANDLE ");
+        return TCL_ERROR;
+      }
+
+      for(i=2; i+1<objc; i+=2){
+        zArg = Tcl_GetStringFromObj(objv[i], 0);
+
+        if( strcmp(zArg, "-db")==0 ){
+            dbiHandle = Tcl_GetStringFromObj(objv[i+1], &len);
+            if(!dbiHandle || len < 1) {
+                return TCL_ERROR;
+            }
+        } else{
+           Tcl_AppendResult(interp, "unknown option: ", zArg, (char*)0);
+           return TCL_ERROR;
+        }
+      }
+
+      /*
+       * Get the leveldb::DB value
+       */
+
+      if(!dbiHandle) {
+        if( interp ) {
+            Tcl_Obj *resultObj = Tcl_GetObjResult( interp );
+
+            Tcl_AppendStringsToObj( resultObj, "invalid db handle (null) ", dbiHandle, (char *)NULL );
+        }
+
+        return TCL_ERROR;
+      }
+
+      dbHashEntryPtr = Tcl_FindHashEntry( tsdPtr->leveldb_hashtblPtr, dbiHandle );
+      if( !dbHashEntryPtr ) {
+        if( interp ) {
+            Tcl_Obj *resultObj = Tcl_GetObjResult( interp );
+
+            Tcl_AppendStringsToObj( resultObj, "invalid db handle ", dbiHandle, (char *)NULL );
+        }
+
+        return TCL_ERROR;
+      }
+
+      db = (leveldb::DB *)(uintptr_t)Tcl_GetHashValue( dbHashEntryPtr );
+      db->ReleaseSnapshot(shot);
+
+      Tcl_MutexLock(&myMutex);
+      if( hashEntryPtr )  Tcl_DeleteHashEntry(hashEntryPtr);
+      Tcl_MutexUnlock(&myMutex);
+
+      Tcl_DeleteCommand(interp, sstHandle);
+      Tcl_SetObjResult(interp, Tcl_NewIntObj( 0 ));
+
+      break;
+    }
+  }
+
+  return TCL_OK;
 }
 
 
@@ -117,7 +239,7 @@ static int LEVELDB_BAT(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*obj
       leveldb::Slice key2;
       leveldb::Slice value2;
 
-      if( objc < 4 || (objc&1)!=0) {
+      if( objc != 4 ) {
         Tcl_WrongNumArgs(interp, 2, objv, "key data ");
         return TCL_ERROR;
       }
@@ -147,7 +269,7 @@ static int LEVELDB_BAT(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*obj
       int key_len = 0;
       leveldb::Slice key2;
 
-      if( objc < 3 || (objc&1)!=1) {
+      if( objc  !=  3 ) {
         Tcl_WrongNumArgs(interp, 2, objv, "key ");
         return TCL_ERROR;
       }
@@ -461,6 +583,7 @@ static int LEVELDB_DBI(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*obj
     "write",
     "batch",
     "iterator",
+    "snapshot",
     "getApproximateSizes",
     "getProperty",
     "close",
@@ -474,6 +597,7 @@ static int LEVELDB_DBI(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*obj
     DBI_WRITE,
     DBI_BATCH,
     DBI_ITERATOR,
+    DBI_SNAPSHOT,
     DBI_GETAPPROXIMATESIZES,
     DBI_GETPROPERTY,
     DBI_CLOSE,
@@ -517,9 +641,13 @@ static int LEVELDB_DBI(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*obj
       char *zArg;
       int i = 0;
       Tcl_Obj *pResultStr = NULL;
+      const leveldb::Snapshot* shot = NULL;
+      Tcl_HashEntry *sstHashEntryPtr;
+      const char *sstHandle = NULL;
+      int sst_length = 0;
 
       if( objc < 3 || (objc&1)!=1) {
-        Tcl_WrongNumArgs(interp, 2, objv, "key ?-fillCache BOOLEAN? ");
+        Tcl_WrongNumArgs(interp, 2, objv, "key ?-fillCache BOOLEAN? ?-snapshot HANDLE? ");
         return TCL_ERROR;
       }
 
@@ -540,10 +668,32 @@ static int LEVELDB_DBI(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*obj
             }else{
               read_options.fill_cache = false;
             }
+        } else if( strcmp(zArg, "-snapshot")==0 ){
+            sstHandle = Tcl_GetStringFromObj(objv[i+1], &sst_length);
+
+            if( !sstHandle || sst_length < 1) {
+              return TCL_ERROR;
+            }
         } else{
            Tcl_AppendResult(interp, "unknown option: ", zArg, (char*)0);
            return TCL_ERROR;
         }
+      }
+
+      if(sstHandle) {
+          sstHashEntryPtr = Tcl_FindHashEntry( tsdPtr->leveldb_hashtblPtr, sstHandle );
+          if( !sstHashEntryPtr ) {
+            if( interp ) {
+                Tcl_Obj *resultObj = Tcl_GetObjResult( interp );
+
+                Tcl_AppendStringsToObj( resultObj, "invalid snapshot handle ", sstHandle, (char *)NULL );
+            }
+
+            return TCL_ERROR;
+          }
+
+          shot = (leveldb::Snapshot *)(uintptr_t)Tcl_GetHashValue( sstHashEntryPtr );
+          read_options.snapshot = shot;
       }
 
       key2 = leveldb::Slice(key, key_len);
@@ -737,17 +887,55 @@ static int LEVELDB_DBI(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*obj
     }
 
     case DBI_ITERATOR: {
+      leveldb::ReadOptions read_options;
       Tcl_HashEntry *newHashEntryPtr;
       char handleName[16 + TCL_INTEGER_SPACE];
       Tcl_Obj *pResultStr = NULL;
       int newvalue;
+      const leveldb::Snapshot* shot = NULL;
+      Tcl_HashEntry *sstHashEntryPtr;
+      const char *sstHandle = NULL;
+      int sst_length = 0;
+      char *zArg;
+      int i = 0;
 
-      if( objc != 2 ) {
-        Tcl_WrongNumArgs(interp, 2, objv, 0);
+      if( objc < 2 || (objc&1)!=0) {
+        Tcl_WrongNumArgs(interp, 2, objv, "?-snapshot HANDLE? ");
         return TCL_ERROR;
       }
 
-      leveldb::Iterator* it = db->NewIterator(leveldb::ReadOptions());
+      for(i=2; i+1<objc; i+=2){
+        zArg = Tcl_GetStringFromObj(objv[i], 0);
+
+        if( strcmp(zArg, "-snapshot")==0 ){
+            sstHandle = Tcl_GetStringFromObj(objv[i+1], &sst_length);
+
+            if( !sstHandle || sst_length < 1) {
+              return TCL_ERROR;
+            }
+        } else{
+           Tcl_AppendResult(interp, "unknown option: ", zArg, (char*)0);
+           return TCL_ERROR;
+        }
+      }
+
+      if(sstHandle) {
+          sstHashEntryPtr = Tcl_FindHashEntry( tsdPtr->leveldb_hashtblPtr, sstHandle );
+          if( !sstHashEntryPtr ) {
+            if( interp ) {
+                Tcl_Obj *resultObj = Tcl_GetObjResult( interp );
+
+                Tcl_AppendStringsToObj( resultObj, "invalid snapshot handle ", sstHandle, (char *)NULL );
+            }
+
+            return TCL_ERROR;
+          }
+
+          shot = (leveldb::Snapshot *)(uintptr_t)Tcl_GetHashValue( sstHashEntryPtr );
+          read_options.snapshot = shot;
+      }
+
+      leveldb::Iterator* it = db->NewIterator(read_options);
 
       Tcl_MutexLock(&myMutex);
       sprintf( handleName, "levelitr%d", tsdPtr->itr_count++ );
@@ -765,6 +953,39 @@ static int LEVELDB_DBI(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*obj
 
       break;
     }
+
+
+    case DBI_SNAPSHOT: {
+      Tcl_HashEntry *newHashEntryPtr;
+      char handleName[16 + TCL_INTEGER_SPACE];
+      Tcl_Obj *pResultStr = NULL;
+      int newvalue;
+      const leveldb::Snapshot* shot;
+
+      if( objc != 2 ) {
+        Tcl_WrongNumArgs(interp, 2, objv, 0);
+        return TCL_ERROR;
+      }
+
+      shot = db->GetSnapshot();
+
+      Tcl_MutexLock(&myMutex);
+      sprintf( handleName, "levelsst%d", tsdPtr->sst_count++ );
+
+      pResultStr = Tcl_NewStringObj( handleName, -1 );
+
+      newHashEntryPtr = Tcl_CreateHashEntry(tsdPtr->leveldb_hashtblPtr, handleName, &newvalue);
+      Tcl_SetHashValue(newHashEntryPtr, (ClientData)(uintptr_t) shot);
+      Tcl_MutexUnlock(&myMutex);
+
+      Tcl_CreateObjCommand(interp, handleName, (Tcl_ObjCmdProc *) LEVELDB_SST,
+          (ClientData)NULL, (Tcl_CmdDeleteProc *)NULL);
+
+      Tcl_SetObjResult(interp, pResultStr);
+
+      break;
+    }
+
 
     case DBI_GETAPPROXIMATESIZES: {
       const char *start = NULL;
@@ -916,7 +1137,7 @@ static int LEVELDB_MAIN(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*ob
           Tcl_WrongNumArgs(interp, 2, objv,
           "-path path ?-create_if_missing BOOLEAN? ?-error_if_exists BOOLEAN? \
            ?-paranoid_checks BOOLEAN? ?-write_buffer_size size? \
-           ?-max_open_files number? ?-compression type? "
+           ?-max_open_files number? ?-block_size size? ?-compression type? "
           );
 
         return TCL_ERROR;
@@ -975,6 +1196,16 @@ static int LEVELDB_MAIN(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*ob
                 options.max_open_files = -1;
             } else {
                 options.max_open_files = number;
+            }
+        } else if( strcmp(zArg, "-block_size")==0 ){
+            int size = 0;
+
+            if(Tcl_GetIntFromObj(interp, objv[i+1], &size) != TCL_OK) {
+                return TCL_ERROR;
+            }
+
+            if(size > 0) {
+                options.block_size = size;
             }
         } else if( strcmp(zArg, "-compression")==0 ){
             const char *compression = NULL;
@@ -1161,7 +1392,7 @@ Leveldb_Init(Tcl_Interp *interp)
     }
 
     /*
-     *   Tcl_GetThreadData handles the auto-initialization of all data in
+     *  Tcl_GetThreadData handles the auto-initialization of all data in
      *  the ThreadSpecificData to NULL at first time.
      */
     Tcl_MutexLock(&myMutex);
@@ -1176,6 +1407,7 @@ Leveldb_Init(Tcl_Interp *interp)
         tsdPtr->dbi_count = 0;
         tsdPtr->itr_count = 0;
         tsdPtr->bat_count = 0;
+        tsdPtr->sst_count = 0;
     }
     Tcl_MutexUnlock(&myMutex);
 
