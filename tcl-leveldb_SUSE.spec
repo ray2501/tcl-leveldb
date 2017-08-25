@@ -12,7 +12,9 @@ Source:        %name-%version.tar.gz
 URL:           https://github.com/ray2501/tcl-leveldb
 BuildRequires: autoconf
 BuildRequires: make
+BuildRequires: gcc-c++
 BuildRequires: leveldb-devel
+BuildRequires: libstdc++-devel
 BuildRequires: tcl-devel >= 8.5
 Requires:      tcl >= 8.5
 BuildRoot:     %{buildroot}
