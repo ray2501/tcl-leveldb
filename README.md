@@ -68,7 +68,7 @@ The key and data is interpreted by Tcl as a byte array.
 ### Basic usage
 leveldb version
 
-The ommand `leveldb version` return a list of the form {major minor} 
+The command `leveldb version` return a list of the form {major minor} 
 for the major and minor levels of the LevelDB release.
 
 ### Database
