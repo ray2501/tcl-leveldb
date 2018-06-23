@@ -63,7 +63,7 @@ below is an example:
 Implement commands
 =====
 
-The key and data is interpreted by Tcl as a byte array.
+The key and data is interpreted by Tcl as a string.
 
 ### Basic usage
 leveldb version
