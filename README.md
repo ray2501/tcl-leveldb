@@ -26,7 +26,7 @@ Documentation
 UNIX BUILD
 =====
 
-I only test on openSUSE LEAP 42.3 and Ubuntu 14.04.
+I only test on openSUSE LEAP 42.3/15.0 and Ubuntu 14.04.
 
 openSUSE LEAP 42.3 install leveldb development files:
 
