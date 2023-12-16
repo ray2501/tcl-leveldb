@@ -178,6 +178,7 @@ VALGRINDARGS	= --tool=memcheck --num-callers=8 --leak-resolution=high \
 		  --leak-check=yes --show-reachable=yes -v
 
 .SUFFIXES: .c .$(OBJEXT)
+.SUFFIXES: .cpp .$(OBJEXT)
 
 #========================================================================
 # Start of user-definable TARGETS section
